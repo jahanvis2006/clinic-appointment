@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model Doctor {
+  id             Int           @id @default(autoincrement())
+  name           String
+  specialization String
+  createdAt      DateTime      @default(now())
+  appointments   Appointment[]
+
+  @@index([name])
+}
+
+model Patient {
+  id           Int           @id @default(autoincrement())
+  name         String
+  phone        String
+  email        String?
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
+
+  @@index([name])
+}
+
+
+
+// status is a plain String (not a Prisma enum) because this project uses
+// SQLite, which Prisma does not support native enums for. Valid values,
+// enforced in application code (server/src/routes/appointments.js and the
+// automation services), are:
+//   SCHEDULED | CANCELLED | COMPLETED | NO_SHOW
+model Appointment {
+  id               Int               @id @default(autoincrement())
+  doctorId         Int
+  patientId        Int
+  startTime        DateTime
+  endTime          DateTime
+  status           String @default("SCHEDULED")
+  cancellationFee  Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([doctorId, startTime])
+  @@index([patientId])
+  @@index([status])
+}
+
+// Outbox pattern for notifications (T1 - morning reminders). Notifications
+// are never sent through a real provider; they are just recorded here so
+// they can be inspected via GET /api/outbox. `idempotencyKey` is unique so
+// that calling POST /api/clock repeatedly for the same simulated morning
+// never produces duplicate reminders for the same appointment.
+model Outbox {
+  id             Int      @id @default(autoincrement())
+  type           String
+  appointmentId  Int
+  patientId      Int
+  doctorId       Int
+  payload        String
+  createdAt      DateTime @default(now())
+  idempotencyKey String   @unique
+
+  @@index([type])
+  @@index([appointmentId])
+}
